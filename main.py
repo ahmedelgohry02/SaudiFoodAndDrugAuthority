@@ -36,28 +36,24 @@ def save_cookies() :
     pickle.dump(driver.get_cookies(), open("cookies.pkl", "wb"))
 
 
+
 ## Creating the main function 
 def main(driver,start,no_pages,d) :
-    # dic = {
-    #     "اسم الشركة": [],
-    #     "رقم السجل التجاري": [],
-    #     "نوع الترخيص": [],
-    #     "نوع النشاط": [],
-    #     "رقم الترخيص": [],
-    #     "المدينة": [],
-    #     "رقم التواصل": [],
-    #     "البريد الإلكتروني": [],
-    #     "تاريخ انتهاء الترخيص": [],
-    #     "مصنع": [],
-    #     "نشاط": [],
-    #     "مجال الغذاء": [],
-    #     "مجال مستحضرات التجميل": [],
-    #     "مجال الأجهزة الطبية": [],
-    #     "مجال الدواء": [],
-    #     "مجال الأعلاف": [],
-    #     "مجال المبيدات": []
-    # }
+    """
+    Main function to scrape data from the SFDA website.
+
+    Args:
+        driver (webdriver.Chrome): The Selenium WebDriver instance.
+        start (int): The starting page number for scraping.
+        no_pages (int): The number of pages to scrape.
+        d : A flag to store the scraped data.
+
+    Returns:
+        None
+    """
+    
     dic = {
+        'رقم المنتج' : [],
         "اسم الشركة": [],
         "رقم الترخيص ": [],
         "رقم قائمة الاجهزة الطبية" : [],
@@ -76,8 +72,9 @@ def main(driver,start,no_pages,d) :
         "الاسم التجاري لملحقات الجهاز": [],
         "وصف ملحقات الجهاز": [],
         "ملحقات الجهاز GMDN": []
+        
     }
-    titles = list(dic.keys())
+    titles = list(dic.keys())[1:]
     all_results = pd.DataFrame(dic)
     # driver.get(rf"https://www.sfda.gov.sa/ar/licensed-establishments-list?pg=1")
     driver.get(rf"https://www.sfda.gov.sa/ar/medical-equipment-list?pg=1")
@@ -100,37 +97,53 @@ def main(driver,start,no_pages,d) :
                         By.XPATH, "//a[contains(text(),'التفاصيل')]"
                     )
             
+            ## Variable for prudct number in the page
+            v = 0
+            
+            ## Variable for the product number as whole
+            product_num = i*10 -9 
+            
+            ## Start to loob over the details buttons
             for button in buttons : 
                 item_data = {}
                 button.click()
+                time.sleep(.5)
                 table = driver.find_element(By.CLASS_NAME , "modal-body").find_element(By.TAG_NAME , "tbody")
                 rows = table.find_elements(By.TAG_NAME , "tr")
+                item_data[f"رقم المنتج"] = product_num
                 t= 0
-                first = True
+                product_num+=1
                 for row in rows : 
                     data = row.find_elements(By.TAG_NAME , "td")
-                    if first : 
-                        time.sleep(.5)
-                        first = False
-                    txt = data[1].text.strip()
+                    txt = data[1].get_attribute("textContent")
                     # print(title ,txt)
+                    
+                    ## Double check 
+                    if not txt : 
+                        data = row.find_elements(By.TAG_NAME , "td")
+                        txt = data[1].get_attribute("textContent")
+                        
+                    
+                    if not txt : 
+                        with open("errorProducts.txt", "a") as file:
+                            file.write(f"\n{i}:{v}")
+                    
                     item_data[f"{titles[t]}"] = txt
                     t+=1
                 # print(item_data)
                 df = pd.DataFrame([item_data])
-                # print(item_data)
-                df = df.map(lambda x: x.encode('unicode_escape').
-                decode('utf-8') if isinstance(x, str) else x)
                 all_results = pd.concat([all_results, df], ignore_index=True)
-                
                 ActionChains(driver)\
                     .send_keys(Keys.ESCAPE)\
                     .perform()
-            all_results.to_excel(f"data{d}.xlsx", index=False)
-            if all_results.shape[0] >2000:
+                
+                v+=1
+            ## Split the data into Chunks
+            all_results.to_excel(f"data{d}.xlsx", index=False,engine='xlsxwriter')
+            if (all_results.shape[0] >5000) or (i == no_pages):
                 all_results = pd.DataFrame(dic)
                 d+=1
-            print(len(buttons))
+            
             if len(buttons) == 0 :
                 with open("errorPages.txt", "a") as file:
                 # Add a new line
@@ -141,18 +154,19 @@ def main(driver,start,no_pages,d) :
                 # Add a new line
                     file.write(f"\n{i}")
         print(e)
-        return i+1,d
+        return i,d
 
 
 
 
 ## Run the script
 if __name__ == "__main__":
-    end = 12000
-    start = 11688
-    d = 89
+    TRIES = 5
+    start = 1
+    end = 17057
+    d = 0
 
-    while True : 
+    for _ in range(TRIES) : 
         s,w = main(driver,start,end ,d)
         if s == end :
             break
